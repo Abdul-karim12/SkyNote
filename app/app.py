@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 
 app = Flask(__name__)
@@ -14,6 +15,13 @@ def init_db():
         CREATE TABLE IF NOT EXISTS notes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             content TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL
         )
     """)
     conn.commit()
@@ -53,16 +61,6 @@ def add_note():
 
     return jsonify({"id": new_id, "note": content})
 
-@app.route("/notes/<int:id>", methods=["DELETE"])
-def delete_note(id):
-    conn = get_db()
-    conn.execute("DELETE FROM notes WHERE id = ?", (id,))
-    conn.commit()
-    conn.close()
-
-    return jsonify({"message": f"Note {id} deleted"})
-
-
 @app.route("/notes/<int:id>", methods=["PUT"])
 def update_note(id):
     data = request.get_json()
@@ -78,5 +76,55 @@ def update_note(id):
 
     return jsonify({"message": f"Note {id} updated", "note": content})
 
+@app.route("/notes/<int:id>", methods=["DELETE"])
+def delete_note(id):
+    conn = get_db()
+    conn.execute("DELETE FROM notes WHERE id = ?", (id,))
+    conn.commit()
+    conn.close()
 
+    return jsonify({"message": f"Note {id} deleted"})
 
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.get_json()
+    username = data.get("username")
+    password = data.get("password")
+
+    if not username or not password:
+        return jsonify({"error": "Username and password are required"}), 400
+
+    hashed_password = generate_password_hash(password)
+
+    try:
+        conn = get_db()
+        conn.execute(
+            "INSERT INTO users (username, password) VALUES (?, ?)",
+            (username, hashed_password)
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({"message": "User registered successfully"})
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "Username already exists"}), 400
+
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.get_json()
+    username = data.get("username")
+    password = data.get("password")
+
+    if not username or not password:
+        return jsonify({"error": "Username and password are required"}), 400
+
+    conn = get_db()
+    user = conn.execute(
+        "SELECT * FROM users WHERE username = ?",
+        (username,)
+    ).fetchone()
+    conn.close()
+
+    if user and check_password_hash(user["password"], password):
+        return jsonify({"message": "Login successful"})
+
+    return jsonify({"error": "Invalid username or password"}), 401
