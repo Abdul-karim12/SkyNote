@@ -4,7 +4,7 @@ import sqlite3
 app = Flask(__name__)
 
 def get_db():
-    conn = sqlite3.connect("notes.db")
+    conn = sqlite3.connect("/data/notes.db")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -34,7 +34,6 @@ def get_notes():
     conn = get_db()
     notes = conn.execute("SELECT * FROM notes").fetchall()
     conn.close()
-
     return jsonify([dict(note) for note in notes])
 
 @app.route("/notes", methods=["POST"])
@@ -64,9 +63,20 @@ def delete_note(id):
     return jsonify({"message": f"Note {id} deleted"})
 
 
+@app.route("/notes/<int:id>", methods=["PUT"])
+def update_note(id):
+    data = request.get_json()
+    content = data.get("note")
 
+    if not content:
+        return jsonify({"error": "Note is required"}), 400
 
+    conn = get_db()
+    conn.execute("UPDATE notes SET content = ? WHERE id = ?", (content, id))
+    conn.commit()
+    conn.close()
 
+    return jsonify({"message": f"Note {id} updated", "note": content})
 
 
 
